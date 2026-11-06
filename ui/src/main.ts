@@ -49,6 +49,11 @@ if (!inGame) {
   const path = [[-1505, 120], [-1380, 120], [-1300, 210], [-1180, 300], [-1040, 300], [-900, 330]];
   let t = 0;
   const player = () => {
+    // ?px=-1750&py=-2500: the mock player stands there (the minimap over a place)
+    if (q.has("px")) {
+      dispatchLocal("map3d:player", { x: Number(q.get("px")), y: Number(q.get("py") ?? 0), z: 40, yaw: Number(q.get("pyaw") ?? 30), camYaw: Number(q.get("pyaw") ?? 30), speed: 0, vehicle: false });
+      return;
+    }
     t += 0.0035;
     const k = (Math.sin(t) * 0.5 + 0.5) * (path.length - 1);
     const i = Math.min(path.length - 2, Math.floor(k)), f = k - i;
@@ -56,7 +61,10 @@ if (!inGame) {
     const yaw = (Math.atan2(-(bx - ax), by - ay) * 180) / Math.PI;
     dispatchLocal("map3d:player", { x: ax + (bx - ax) * f, y: ay + (by - ay) * f, z: 20, yaw, camYaw: yaw, speed: q.has("drive") ? 18 : 2, vehicle: q.has("drive") });
   };
+  // ?quality=quality: the 3D city (performance by default, as in game); ?ask=1: the first
+  // opening's question
   setTimeout(() => {
+    dispatchLocal("map3d:quality", { mode: q.get("quality") === "quality" ? "quality" : "performance", chosen: !q.has("ask") });
     if (q.has("theme")) dispatchLocal("map3d:config", { theme: { accent: "#3fe0d0", roadEdge: "#3fe0d0", buildingEdge: "#3fe0d0", terrainGrid: "#3fe0d0" } });
     dispatchLocal("map3d:blips", { set: [
       { id: "a", x: -1188, y: 320, icon: "store", label: "24/7 Store", category: "service", description: "Snacks, water and phone credit." },
@@ -72,6 +80,16 @@ if (!inGame) {
       ] : []),
     ] });
     if (q.has("jam")) dispatchLocal("map3d:jam", { strength: Number(q.get("jam")), label: q.get("label") ?? undefined });
+    // ?areas=1: Light RP's Dogtown danger zone (try ?areas=1&open=1&dist=2600&fx=-1750&fy=-2450)
+    if (q.has("areas")) {
+      const dogtown = [-2550, -2726.6, -2410, -2846.6, -2450, -3006.6, -2410, -3146.6, -1930, -3066.6, -1910, -3006.6, -1690, -2946.6, -1510, -2866.6,
+        -1510, -2806.6, -1370, -2766.6, -1250, -2586.6, -1290, -2366.6, -1050, -2246.6, -1010, -2146.6, -1050, -1886.6, -1150, -1806.6,
+        -1390, -1786.6, -1550, -1906.6, -1570, -2026.6, -1830, -2086.6, -1930, -2206.6, -2030, -2206.6, -2070, -2286.6, -2150, -2286.6,
+        -2230, -2426.6, -2350, -2466.6, -2350, -2546.6, -2430, -2566.6, -2430, -2626.6, -2530, -2666.6];
+      dispatchLocal("map3d:area", { id: "op77_lightrp:lightrp.dogtown", pts: dogtown, fill: "#FF2E3C", fillOpacity: Number(q.get("fo") ?? 0.22), stroke: "#FF2E3C", strokeWidth: 2.5,
+        pattern: "hatch", label: "DOGTOWN · DANGER ZONE", lx: Number(q.get("lx") ?? -1420), ly: Number(q.get("ly") ?? -2560), map: true, minimap: true, pulse: q.get("areas") === "pulse" });
+      dispatchLocal("map3d:area", { id: "demo:solid", pts: [-1250, 250, -1120, 250, -1120, 380, -1250, 380], fill: "#3FE0D0", fillOpacity: 0.18, pattern: "solid", label: "SOLID AREA" });
+    }
     // ?zones=1: influence zones at every density level, one of them filling up and emptying
     if (q.has("zones")) {
       const levels = [{ min: 5, id: "active", label: "ACTIVE" }, { min: 10, id: "busy", label: "BUSY" }, { min: 18, id: "crowded", label: "CROWDED" }, { min: 30, id: "hotspot", label: "HOTSPOT" }];

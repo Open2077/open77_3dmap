@@ -20,12 +20,20 @@ customizable 3D map of Night City, built from the game's own 3D map assets:
 - **Blips** for any resource (client or server): built-in icons or your own SVG, colour,
   label, description, category (legend with toggles and counts), pulse, heading arrows,
   edge pinning. Other players near you are shown.
+- **Areas** for any client resource: polygons (a danger zone, a turf, a no-go zone)
+  draped over the ground, the roads and the buildings of the map and the minimap, with a
+  translucent fill (solid or diagonal danger hatching), a border and a label.
 - **GPS**: routes computed on the game's own traffic network (15,906 vehicle lanes,
   one-way aware, speed-weighted A*, about 1 ms per route), drawn as an animated ribbon of
   chevrons on the map and the minimap; next maneuver and distance banner, remaining
   distance and ETA, automatic rerouting when you leave the route, arrival event.
   The waypoint is shared with the game's own (`Open77.blips` waypoint): a waypoint set by
   any other resource becomes this map's destination, and vice versa.
+
+- **Display quality**: **performance** by default, a flat 2D map seen from straight
+  above for small configurations; **quality**, the 3D city with every effect. The first
+  time a player opens the map they choose; the choice is kept on their machine and
+  switched at any time under DISPLAY in the legend (see "Display quality").
 
 The game's map key opens this map (rebindable: "City map (3D)" in the key settings);
 the game's own map and HUD minimap are switched off while the resource runs and come
@@ -89,6 +97,9 @@ theme = {
   only the route animates, the search box).
 - `gps`: `enabled, rerouteDistance, rerouteDelay, arriveDistance, snapMainNetwork,
   avoidHighways, units (metric|imperial), routeWidth, animationSpeed`.
+- `areas`: `labels` (each area's label on the open map), `hatch` / `minimapHatch` (pixels
+  between two hatching stripes), `minimapStrength` (0..1), `minimapLabel` (the line under
+  the minimap names the labelled area you stand in instead of the district).
 - `categories`: `{ id, label, icon, color }` rows of the legend.
 - `locale`: the texts (`setRoute, clearRoute, waypoint, arrived, noRoute, rerouting...`).
 
@@ -126,9 +137,57 @@ map:focus({ x = 0, y = 0 }, 800)     -- fly the open map's camera there
 map:setTheme({ accent = "#3FE0D0", buildingEdge = "#3FE0D0", roadEdge = "#3FE0D0" })
 map:setConfig({ minimap = { anchor = "bottom-right", shape = "circle" } })
 map:setMinimapVisible(false)
+map:setPlayerDotsHidden(true, { 12 })   -- see "Player dots"
+map:getQuality()               -- "performance" | "quality", and whether the player chose
+map:setQuality("performance")  -- see "Display quality"
 ```
 
 Blips belong to the resource that created them and disappear when it stops.
+
+### Display quality
+
+Two ways to draw the map and the minimap, the same look (colours, outlines, blips, areas,
+route, zones):
+
+| | performance (default) | quality |
+|---|---|---|
+| view | 2D, straight above (orthographic), rotation kept, no tilt | 3D orbit, tilt, 2D/3D button |
+| buildings | roofs only (one quad per box), outlined | lit volumes, outlines, x-ray cut on the minimap |
+| ground, water, landmarks | one flat colour (major grid kept) | lighting, minor grid, scan lines, rim light |
+| route | still chevrons | flowing chevrons, pulsing destination |
+| activity zones | still disc and rim | animated field, beacons, lit buildings |
+| antialiasing, resolution | none; map at screen pixels at most, minimap x1.25 | 4x MSAA; map up to x2, minimap x1.75 |
+| redraws | only on change; the player's arrow moves every update, the map under it 4 times a second; minimap 30 fps at most | idle animation 30 fps, minimap up to 60 fps |
+| open/close | short fade | blur, scale and scan line |
+
+The first time a player opens the map (never chosen: nothing in KVP), a DISPLAY MODE
+panel asks which one (1 / 2, arrows + Enter, or a click; Esc closes the map and asks
+again next time). The map behind it is already drawn in performance mode. The choice is
+kept in the client's KVP (`Open77.kvp`, key `map3d:quality`, per server) and reaches the
+minimap's surface at once; the legend's DISPLAY switch changes it at any time, without
+reloading the page.
+
+`config.quality = { default = "performance", ask = true }`: `ask = false` never asks
+(`default` until the player switches). A gamemode's settings menu can use
+`exports.op77_map3d:setQuality(mode)` / `getQuality()`; `op77_map3d:qualityChanged`
+(client event, the mode) fires on a change.
+
+### Player dots
+
+The map draws the players within `nearbyPlayers.radius` (350 m) as dots. An activity
+where that would give the game away (a chase: the cops would see the runner) hides them,
+opt-in, for as long as it needs:
+
+```lua
+map:setPlayerDotsHidden(true, { runnerId })  -- hide these players (server ids)
+map:setPlayerDotsHidden(true)                -- hide every player
+map:setPlayerDotsHidden(false)               -- show again what this resource hid
+map:arePlayerDotsHidden(runnerId)            -- true if any resource hides that player
+```
+
+Each call replaces the calling resource's previous choice; several resources' choices
+add up; a hidden dot goes at once, not at the next refresh. Everything a resource hid
+comes back when it stops. Blips and the player's own arrow are not affected.
 
 ### Jamming
 
@@ -149,6 +208,49 @@ map:isJammed()
 ```
 
 `op77_map3d:jammed (jammed, strength)` fires when the map becomes jammed or clear.
+
+### Areas
+
+Polygons drawn on the open map and the minimap: a translucent fill (plain, or diagonal
+danger hatching), a solid border and a label. They lie on the ground, the roads and the
+buildings (the city's relief is 140 m in Dogtown alone, so a flat shape would float or
+sink), under the blips, the route and the labels.
+
+```lua
+local id = map:addArea({
+    id = "dogtown",                    -- optional stable id (namespaced to your resource)
+    points = { { x = -2550, y = -2726.6 }, { -2410, -2846.6 }, ... },   -- world metres, 3 to 160
+    fill = "#FF2E3C",                  -- #rrggbb or #rgb (default: the danger red)
+    fillOpacity = 0.22,                -- 0..1
+    stroke = "#FF2E3C",                -- the border (default: the fill)
+    strokeWidth = 2.5,                 -- pixels, 0..8 (0: no border)
+    pattern = "hatch",                 -- "hatch" (diagonal stripes) or "solid"
+    label = "DOGTOWN · DANGER ZONE",   -- optional, 64 characters at most
+    labelPosition = { x = -1420, y = -2560 },   -- default: inside the shape, near its middle
+    map = true, minimap = true,        -- where it shows
+    pulse = false,                     -- the fill and border breathe
+})
+map:updateArea(id, { fill = "#FFCC00", label = false })   -- the fields given; false clears label / labelPosition
+map:removeArea(id)
+map:clearAreas()                       -- every area of the calling resource
+map:getArea(id)                        -- a copy of the definition, or nil
+```
+
+- A refused definition returns `nil, reason` (`updateArea`: `false, reason`): fewer than 3
+  or more than 160 points, a point that is not a finite `{ x, y }` (or `{ x = .., y = .. }`),
+  points that enclose nothing, a colour that is not `#rrggbb`, an unknown `pattern`.
+- Areas belong to the resource that created them: only it can update or remove them, an
+  id it gave is its own (`"dogtown"` is `"<resource>:dogtown"`, either form works for it),
+  and they go when it stops. 16 per resource: the map draws 16 at a time (the oldest).
+  Adding again with the same `id` replaces the area and keeps its place in the drawing
+  order; where two areas overlap, the newer one is on top.
+- Inside is decided with the even-odd rule, like `Map3DArea.contains(area, x, y)`.
+- The border and the hatching keep the same width in pixels at every zoom; the stripes
+  stay anchored to the ground but always run diagonally across the screen.
+- Areas are client-only: a server resource sends its outline to its own client script,
+  which calls `addArea` (Light RP does this for Dogtown). A 160-point definition is about
+  990 values, under the 1024 an export argument may hold; each area reaches the page in a
+  message of its own.
 Built-in icons: `pin user car store briefcase target home flag star skull shield police
 hospital fuel wrench shirt gun phone dollar bed food info warning garage crosshair
 waypoint bank mission bus`.
@@ -218,7 +320,15 @@ cd ui && npm ci && npm run build      # npm run dev -> http://localhost:5181/?op
 ```
 
 The browser preview (`npm run dev`) runs a mock player and blips: `?open=1` opens the
-map, `?route=1` sets a route, `?drive=1` drives, `?dist=700&fx=-1450&fy=150` zooms.
+map, `?route=1` sets a route, `?drive=1` drives, `?dist=700&fx=-1450&fy=150` zooms,
+`?areas=1` (or `?areas=pulse`) adds Light RP's Dogtown danger zone and a solid area
+(`?areas=1&open=1&dist=2600&fx=-1750&fy=-2450`), `?px=-1800&py=-2550&pyaw=0` puts the
+player there (the minimap over a place). The preview draws in performance mode;
+`?quality=quality` draws the 3D city, `?ask=1` shows the first opening's question.
+
+`npm run build` empties `web/` first (Vite's `emptyOutDir`), `web/data` included: restore
+it with `git checkout -- web/data`, or build with `npx vite build --outDir <elsewhere>` and
+copy `index.html` and `assets/` over.
 
 What the game's browser does differently from a desktop browser (all handled):
 
@@ -233,8 +343,9 @@ What the game's browser does differently from a desktop browser (all handled):
 ## Tests
 
 ```
-pwsh -File tests/run-lua.ps1      # blips, owners, page lifecycle, waypoint mirror, server targets
+pwsh -File tests/run-lua.ps1      # blips, areas, owners, page lifecycle, waypoint mirror, server targets
 node tests/gps_test.mjs           # 200 random routes on the real network (needs ui/node_modules)
+node tests/areas_test.mjs         # what the shaders get from an area: distances, slots, Dogtown (needs ui/node_modules)
 ```
 
 ## License

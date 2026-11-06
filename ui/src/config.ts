@@ -89,12 +89,21 @@ export interface InfluenceConfig {
   beaconLevel: number; // from this level on, a column of light
 }
 
+export interface AreasConfig {
+  labels: boolean; // each area's label on the open map
+  hatch: number; // pixels between two hatching stripes on the open map
+  minimapHatch: number; // on the minimap
+  minimapStrength: number; // 0..1: how strongly the minimap shows the areas
+  minimapLabel: boolean; // the line under the minimap names the labelled area you stand in
+}
+
 export interface MapConfig {
   theme: Theme;
   minimap: MinimapConfig;
   map: MapViewConfig;
   gps: GpsConfig;
   influence: InfluenceConfig;
+  areas: AreasConfig;
   categories: CategoryConfig[];
   keys: Record<string, string>; // labels shown in the help bar
   locale: Record<string, string>;
@@ -176,6 +185,13 @@ export const DEFAULT_CONFIG: MapConfig = {
     buildings: true,
     beaconLevel: 2,
   },
+  areas: {
+    labels: true,
+    hatch: 11,
+    minimapHatch: 9,
+    minimapStrength: 0.85,
+    minimapLabel: true,
+  },
   categories: [
     { id: "player", label: "Players", icon: "user" },
     { id: "service", label: "Services", icon: "store" },
@@ -209,6 +225,23 @@ export const DEFAULT_CONFIG: MapConfig = {
     noSignal: "NO SIGNAL",
     noResults: "Nothing found",
     district: "District",
+    // display quality: the legend's switch, the toast, the first opening's question
+    display: "DISPLAY",
+    performance: "2D · Performance",
+    quality: "3D · Quality",
+    performanceOn: "PERFORMANCE MODE · 2D",
+    qualityOn: "QUALITY MODE · 3D",
+    displayTag: "MAP",
+    displayTitle: "DISPLAY MODE",
+    displayQuestion: "HOW SHOULD THE CITY BE DRAWN?",
+    performanceTag: "LIGHT · ANY PC",
+    performanceTitle: "PERFORMANCE",
+    performanceText: "A flat 2D map without the heavy effects, on the map and the minimap. Smooth on small configurations.",
+    qualityTag: "RECENT GRAPHICS CARD",
+    qualityTitle: "QUALITY",
+    qualityText: "The 3D city: lit buildings, x-ray minimap, animated route and activity zones.",
+    confirm: "Confirm",
+    displayHint: "Switch at any time under DISPLAY in the legend.",
     "m.start": "START", "m.straight": "CONTINUE", "m.left": "TURN LEFT", "m.right": "TURN RIGHT",
     "m.slight-left": "KEEP LEFT", "m.slight-right": "KEEP RIGHT", "m.sharp-left": "SHARP LEFT", "m.sharp-right": "SHARP RIGHT",
     "m.uturn": "U-TURN", "m.arrive": "DESTINATION",
