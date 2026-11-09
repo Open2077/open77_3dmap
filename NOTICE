@@ -16,9 +16,8 @@ only for use with a legitimate copy of Cyberpunk 2077 (Open77 requires one),
 under CD PROJEKT RED's fan content terms. You can regenerate it from your own
 game installation with tools/export_web.py instead of using the copy here.
 
-Third-party components bundled in web/
---------------------------------------
-- three.js (https://threejs.org), MIT license: licenses/three.js-LICENSE
-- Chakra Petch (The Chakra Petch Project Authors), SIL Open Font License 1.1: licenses/ChakraPetch-OFL.txt
+Third-party components bundled in ui/native/fonts
+------------------------------------------------
 - Share Tech Mono (Carrois Type Design, Ralph du Carrois), SIL Open Font License 1.1: licenses/ShareTechMono-OFL.txt
 - Zen Dots (The Dots Project Authors), SIL Open Font License 1.1: licenses/ZenDots-OFL.txt
+(converted from WOFF2 to TTF; Chakra Petch is built into the Open77 client's NativeUI)
