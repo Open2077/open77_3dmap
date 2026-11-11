@@ -274,6 +274,8 @@ map:addBlip({ 1, 4, 9 }, { ... })       -- a list
 map:updateBlip(id, { label = "Depot (closed)" })
 map:removeBlip(id)
 map:clearBlips()
+map:listBlips()                         -- the blips for everyone, copies sorted by id, with .owner (the resource)
+map:listBlips(offset, limit)            -- one page of it, for a long list
 map:setWaypoint(playerId, { x = ..., y = ..., z = ... })   -- or false to clear
 map:openMap(playerId, { x = ..., y = ... })
 map:jam(-1 | playerId | { ids }, { strength = 1, label = "BLACKOUT" })   -- jamming, same targets
@@ -283,6 +285,13 @@ map:unjam(id); map:removeJamZone(id); map:clearJams()
 
 Server blips are sent again to players who join later; a stopping resource takes its
 blips along.
+
+`listBlips` is for a resource that shows the map elsewhere (an external live map, a staff
+tool). It lists only the blips placed for everyone: those for a player or a list are left
+out. Each entry is the blip as sent to the players plus `owner`; changing it does not
+change the server's blips. An export's result is copied and limited to 4,096 nodes and
+48 KiB (every key and value counts, about 40 for a blip with every field set), so read a
+long list in pages (`listBlips(0, 25)`, `listBlips(25, 25)`... until a page comes back short).
 
 ## The map data
 
