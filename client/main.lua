@@ -38,6 +38,11 @@ local nativeConfirmed = false
 local nativeStale = nil
 -- Who chose the current waypoint: "native" = another resource through Open77.blips.
 local waypointOrigin = nil
+-- A world (re)load destroys the native waypoint: it is placed again once the world has
+-- settled, and the waypoint poll stands aside until then.
+local WORLD_SETTLE_MS = 2500
+local worldSettling = false
+local worldEpoch = 0
 
 -- Display quality of the map and the minimap: "performance" (a flat 2D map without the
 -- costly effects, for small configurations) or "quality" (the 3D city). The player picks
@@ -324,7 +329,7 @@ end
 CreateThread(function()
     while true do
         Wait(1000)
-        if pageReady and nativeBlips() and type(Open77.blips.waypoint) == "function" then
+        if pageReady and not worldSettling and nativeBlips() and type(Open77.blips.waypoint) == "function" then
             local ok, wp, why = pcall(Open77.blips.waypoint)
             if ok and why == nil then -- nil WITH a reason means the question could not be asked
                 wp = type(wp) == "table" and type(wp.x) == "number" and wp or nil
@@ -355,6 +360,37 @@ CreateThread(function()
             end
         end
     end
+end)
+
+-- The world (re)loaded: the game took every native pin along, the waypoint too. A join
+-- raises open77:worldReady twice, sometimes milliseconds apart, so the waypoint is placed
+-- again 2.5 s after the last one. Until then the poll above stands aside: a pin missing
+-- then is the reload, not someone clearing it. A native waypoint another resource placed
+-- meanwhile is left to the poll, which follows it.
+AddEventHandler("open77:worldReady", function()
+    if not nativeBlips() then return end
+    worldEpoch = worldEpoch + 1
+    local epoch = worldEpoch
+    worldSettling = true
+    nativeConfirmed, nativeStale = false, nil
+    CreateThread(function()
+        Wait(WORLD_SETTLE_MS)
+        if epoch ~= worldEpoch then return end -- a later worldReady waits on its own
+        worldSettling = false
+        if not nativeBlips() then return end
+        local okr, cur, why = pcall(Open77.blips.waypoint)
+        cur = okr and why == nil and type(cur) == "table" and type(cur.x) == "number" and cur or nil
+        if cur and same(cur, waypoint) then
+            nativeWaypointSeen, nativeConfirmed = waypoint, true
+        elseif cur or not waypoint then
+            nativeWaypointSeen = nil -- someone else's, or none: the poll follows it
+        else
+            dbg("world reloaded: native waypoint placed again")
+            local ok, done, reason = pcall(Open77.blips.setWaypoint, waypoint)
+            if not ok or not done then warn("wp", "native waypoint refused: " .. tostring(ok and reason or done)) end
+            nativeWaypointSeen = waypoint
+        end
+    end)
 end)
 
 -- ---------------------------------------------------------------------------

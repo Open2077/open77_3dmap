@@ -43,7 +43,15 @@ assert(B.patch(b, { color = false }).color == nil)
 local threads, handlers, netHandlers, exported, sentToServer = {}, {}, {}, {}, {}
 local function runThreads(n) for _ = 1, n or 1 do for _, t in ipairs(threads) do if coroutine.status(t) ~= "dead" then assert(coroutine.resume(t)) end end end end
 _G.CreateThread = function(fn) threads[#threads + 1] = coroutine.create(fn) end
-_G.Wait = function() coroutine.yield() end
+-- runThreads ignores time; advance(ms) runs a clock and wakes each thread when its Wait is over
+local now, wakeAt = 0, {}
+_G.Wait = function(ms) wakeAt[coroutine.running()] = now + (tonumber(ms) or 0); coroutine.yield() end
+local function advance(ms)
+  for _ = 1, math.ceil(ms / 5) do
+    now = now + 5
+    for _, t in ipairs(threads) do if coroutine.status(t) == "suspended" and (wakeAt[t] or 0) <= now then assert(coroutine.resume(t)) end end
+  end
+end
 _G.GetCurrentResourceName = function() return "op77_map3d" end
 local invoking = nil
 _G.GetInvokingResource = function() return invoking end
@@ -269,6 +277,87 @@ nativeWp = { x = 42, y = 42, z = 0 }  -- then another resource really picks a pl
 runThreads(2)
 assert(exported.getWaypoint().x == 42, "a genuinely new native waypoint is still followed")
 Open77.blips.setWaypoint = realSet
+-- a world (re)load destroys the native waypoint, and a join raises open77:worldReady twice,
+-- sometimes milliseconds apart: placed again once, 2.5 s after the last one; the poll
+-- stands aside meanwhile
+do
+  local sets = 0
+  local function place(p) sets = sets + 1; nativeWp = { x = p.x, y = p.y, z = p.z }; return true end
+  Open77.blips.setWaypoint = place
+  local function worldReady() assert(handlers["open77:worldReady"], "listens to open77:worldReady")() end
+  local function reload() nativeWp = nil; worldReady() end
+  local function wpx() local w = exported.getWaypoint(); return w and w.x end
+  assert(exported.setWaypoint({ x = 600, y = 700 }))
+  advance(1100)
+  sets = 0
+  reload(); advance(5); reload(); advance(300); reload()
+  advance(2400)
+  assert(nativeWp == nil and sets == 0, "nothing placed while the world settles, whatever the first worldReady's timer says")
+  assert(wpx() == 600, "the route stays meanwhile")
+  advance(200)
+  assert(nativeWp and nativeWp.x == 600 and sets == 1, "placed again once, 2.5 s after the last worldReady")
+  -- another resource's waypoint, its pin still there when worldReady comes: a poll during
+  -- the settle must neither confirm it nor read its destruction as a clear
+  nativeWp = { x = 77, y = 88, z = 0 }
+  advance(1100)
+  assert(wpx() == 77, "another resource's native waypoint is followed")
+  advance(1100)
+  sets = 0
+  worldReady()
+  advance(1100)
+  nativeWp = nil
+  advance(1100)
+  assert(wpx() == 77, "a pin lost during the settle does not clear the route")
+  advance(400)
+  assert(nativeWp and nativeWp.x == 77 and sets == 1, "another resource's waypoint is placed again too")
+  advance(1100)
+  assert(wpx() == 77, "and the poll keeps it")
+  -- the game applies the waypoint placed again late: what was confirmed before the reload
+  -- does not make the gap a clear
+  Open77.blips.setWaypoint = function(p)
+    sets = sets + 1
+    CreateThread(function() Wait(1500); nativeWp = { x = p.x, y = p.y, z = p.z } end)
+    return true
+  end
+  reload(); advance(3300)
+  assert(nativeWp == nil and wpx() == 77, "the route waits for the game")
+  advance(1000)
+  assert(nativeWp and nativeWp.x == 77 and wpx() == 77, "and the waypoint arrives")
+  Open77.blips.setWaypoint = place
+  -- the player picks a place during the settle: that one is put back
+  reload(); advance(500)
+  pageHandlers["map3d:waypoint"]({ x = 120, y = 130, z = 0 })
+  reload(); advance(2600)
+  assert(nativeWp and nativeWp.x == 120 and wpx() == 120, "the waypoint chosen during the settle is the one placed again")
+  -- another resource places the native waypoint during the settle: left alone, followed
+  reload(); advance(1000)
+  nativeWp = { x = 900, y = 900, z = 0 }
+  sets = 0
+  advance(1700)
+  assert(nativeWp and nativeWp.x == 900 and sets == 0, "a native waypoint placed meanwhile is not overwritten")
+  advance(1100)
+  assert(wpx() == 900, "and becomes the destination")
+  -- cleared during the settle: nothing comes back
+  reload(); advance(500)
+  pageHandlers["map3d:waypoint"]({ clear = true })
+  sets = 0
+  advance(2600)
+  assert(nativeWp == nil and sets == 0 and exported.getWaypoint() == nil, "a waypoint cleared meanwhile stays cleared")
+  -- the join: the world reloads before the poll ever read the waypoint back
+  assert(exported.setWaypoint({ x = 600, y = 700 }))
+  reload(); advance(2600)
+  assert(nativeWp and nativeWp.x == 600, "a waypoint lost before it was read back comes back")
+  exported.clearWaypoint()
+  sets = 0
+  -- not mirroring the game's waypoint: a world reload changes nothing
+  Map3DConfig.mirrorNativeWaypoint = false
+  assert(exported.setWaypoint({ x = 600, y = 700 }))
+  reload(); advance(3000)
+  assert(nativeWp == nil and sets == 0 and wpx() == 600, "mirrorNativeWaypoint off: nothing placed")
+  exported.clearWaypoint()
+  Map3DConfig.mirrorNativeWaypoint = true
+  Open77.blips.setWaypoint = realSet
+end
 -- route info and arrival are events
 pageHandlers["map3d:routeInfo"]({ active = true, remaining = 999 })
 miniHandlers["map3d:routeInfo"]({ active = true, remaining = 120 })
@@ -570,4 +659,4 @@ do
   assert(sExports.isInfluenceEnabled())
 end
 
-print("PASS: map3d blips (validation, owners, cleanup), page lifecycle, waypoint mirror both ways, open/close focus, runtime config replay, server targets and late joiners")
+print("PASS: map3d blips (validation, owners, cleanup), page lifecycle, waypoint mirror both ways and across world reloads, open/close focus, runtime config replay, server targets and late joiners")
