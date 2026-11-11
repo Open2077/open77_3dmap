@@ -503,6 +503,57 @@ toClient = {}
 sHandlers.onResourceStop("jobs")
 assert(#toClient == 3, "the owner stops: removed for everyone it was shown to")
 assert(sExports.setWaypoint(2, { x = 1, y = 2 }) and toClient[#toClient].name == "op77_map3d:waypoint")
+-- listBlips: only the blips for everyone, with their owner, as copies, sorted by id, paged on request
+do
+  local function ids(list) local out = {}; for i, w in ipairs(list) do out[i] = w.id end; return out end
+  local function values(v) if type(v) ~= "table" then return 1 end; local n = 1; for _, x in pairs(v) do n = n + 1 + values(x) end; return n end
+  assert(#sExports.listBlips() == 0, "nothing for everyone: nothing listed")
+  invoking = "zeta"
+  assert(sExports.addBlip(nil, { id = "m", x = 3, y = 4, z = 5, label = "Zeta M", category = "job" }) == "srv:zeta:m")
+  invoking = "alpha"
+  assert(sExports.addBlip("all", { id = "z", x = 1, y = 2, label = "Alpha Z" }) == "srv:alpha:z")
+  local a = assert(sExports.addBlip(-1, { id = "a", x = 7, y = 8, icon = "store", color = "#FFCC00", pulse = true }))
+  sExports.addBlip(2, { id = "mine", x = 9, y = 9, label = "one player" })
+  sExports.addBlip({ 1, 2 }, { id = "pair", x = 9, y = 9, label = "a list" })
+  local list = sExports.listBlips()
+  assert(#list == 3 and ids(list)[1] == "srv:alpha:a" and ids(list)[2] == "srv:alpha:z" and ids(list)[3] == "srv:zeta:m", "everyone's blips only, sorted by id")
+  assert(list[1].owner == "alpha" and list[3].owner == "zeta" and list[3].label == "Zeta M" and list[3].z == 5 and list[3].category == "job", "with the owner and the fields")
+  assert(list[1].icon == "store" and list[1].color == "#FFCC00" and list[1].pulse == true and list[1].label == nil)
+  assert(ids(sExports.listBlips())[1] == "srv:alpha:a" and #sExports.listBlips() == 3, "the same order every time")
+  -- copies: changing a result changes nothing in the server
+  list[1].label, list[1].x, list[1].owner, list[1].extra = "changed", 999, "someone", true
+  local again = sExports.listBlips()
+  assert(#again == 3 and again[1].label == nil and again[1].x == 7 and again[1].owner == "alpha" and again[1].extra == nil, "a result is a copy")
+  toClient = {}
+  _G.source = 1; sNet["op77_map3d:hello"]()
+  for _, w in ipairs(toClient[1].payload.set) do assert(w.owner == nil and w.extra == nil and w.x ~= 999, "what the players get is untouched, and has no owner") end
+  -- updates show; a blip retargeted to a player leaves the list; removed and stopped ones are gone
+  assert(sExports.updateBlip(a, { label = "Shop" }) and sExports.listBlips()[1].label == "Shop")
+  assert(sExports.addBlip(1, { id = "a", x = 7, y = 8 }) == a and #sExports.listBlips() == 2, "the same id for one player: not listed any more")
+  assert(sExports.addBlip(-1, { id = "a", x = 7, y = 8 }) == a and #sExports.listBlips() == 3)
+  assert(sExports.removeBlip(a) and #sExports.listBlips() == 2 and ids(sExports.listBlips())[1] == "srv:alpha:z")
+  -- pages: offset and limit follow the sorted order; the pages add up to the list
+  invoking = "beta"
+  for k = 1, 5 do sExports.addBlip(-1, { id = "p" .. k, x = k, y = k }) end
+  local full, paged = sExports.listBlips(), {}
+  assert(#full == 7)
+  local from = 0
+  while true do
+    local page = sExports.listBlips(from, 3)
+    for _, w in ipairs(page) do paged[#paged + 1] = w.id end
+    if #page < 3 then break end
+    from = from + 3
+  end
+  assert(table.concat(paged, ",") == table.concat(ids(full), ","), "pages of 3 add up to the whole list")
+  assert(#sExports.listBlips(2) == 5 and sExports.listBlips(2)[1].id == full[3].id and #sExports.listBlips(0, 0) == 0 and #sExports.listBlips(7, 3) == 0 and #sExports.listBlips(-4, 2) == 2, "offset only, empty, past the end, a negative offset")
+  -- what an entry holds with every field set, against the limit on an export's values
+  local fat = assert(sExports.addBlip(-1, { id = "fat", x = 1, y = 2, z = 3, icon = "star", color = "#FFFFFF", label = "L", description = "D", category = "c",
+    scale = 1.5, map = true, minimap = true, edge = true, pulse = true, heading = 90, routable = true, priority = 1 }))
+  for _, w in ipairs(sExports.listBlips()) do if w.id == fat then assert(values(w) <= 40, "an entry holds about 40 values (" .. values(w) .. ")") end end
+  sHandlers.onResourceStop("beta"); sHandlers.onResourceStop("alpha"); sHandlers.onResourceStop("zeta")
+  assert(#sExports.listBlips() == 0, "a stopping resource's blips leave the list")
+  invoking = "other"
+end
 -- server jams: everyone gets them, late joiners too, the owner's stop lifts them
 invoking = "blackout"
 toClient = {}

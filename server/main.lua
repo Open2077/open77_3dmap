@@ -243,6 +243,24 @@ exports("addBlip", function(target, def) return add(target, def, owner()) end)
 exports("updateBlip", function(id, patch) return update(id, patch, owner()) end)
 exports("removeBlip", function(id) return remove(id, owner()) end)
 exports("clearBlips", function() return clear(owner()) end)
+-- The blips placed for everyone (not those for a player or a list), as copies sorted by
+-- id, each with its owner (the resource). offset / limit page the list: an export's result
+-- is limited to 4,096 nodes and 48 KiB (every key and value counts, ~40 a blip at most).
+exports("listBlips", function(offset, limit)
+    local ids = {}
+    for id, r in pairs(blips) do if not r.targets then ids[#ids + 1] = id end end
+    table.sort(ids)
+    local first = math.max(0, math.floor(tonumber(offset) or 0))
+    local last = tonumber(limit) and first + math.max(0, math.floor(tonumber(limit))) or #ids
+    local out = {}
+    for i = first + 1, math.min(last, #ids) do
+        local r = blips[ids[i]]
+        local w = wire(ids[i], r.blip)
+        w.owner = r.owner
+        out[#out + 1] = w
+    end
+    return out
+end)
 -- Staff commands (ACL command.map3d.jam / command.map3d.unjam), also from the console:
 --   map3d.jam <playerId|-1> [strength 0..1] [label...]      map3d.unjam [playerId|-1]
 local commandJams = {}   -- target -> jam id
