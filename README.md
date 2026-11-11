@@ -33,6 +33,8 @@ only what moves, and shows what it costs live (the NATIVEUI panel on the open ma
   distance and ETA, automatic rerouting when you leave the route, arrival event.
   The waypoint is shared with the game's own (`Open77.blips` waypoint): a waypoint set by
   any other resource becomes this map's destination, and vice versa.
+  The game drops its waypoint when the world reloads (twice on a join): it is placed
+  again once the world has settled.
 
 - **Display quality**: **performance** by default, a flat 2D map seen from straight
   above for small configurations; **quality**, the 3D city with every effect. The first
