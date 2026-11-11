@@ -870,6 +870,44 @@ function N.navigate()
     end
 end
 
+-- The stretch of the route around the player, for another resource (export getRoutePath): `behind` metres back
+-- to `ahead` metres on, the progress along the route, and the maneuvers inside the stretch. A window, not the
+-- route: an export result is copied across the resource boundary and refused above 4,096 nodes, which a
+-- city-long route (over a thousand points) passes. At most 600 points and 8 maneuvers, about 2,400 nodes.
+local ROUTE_WINDOW_POINTS, ROUTE_WINDOW_MANEUVERS = 600, 8
+function N.routePath(ahead, behind)
+    if not route or not waypoint then return nil end
+    local P, cum = route.points, route.cumulative
+    local n = math.min(#cum, #P // 3)
+    if n < 1 then return nil end
+    local function metres(v, default, max)
+        v = tonumber(v)
+        if not v or v ~= v then v = default end   -- not a number (or NaN): the default
+        return clamp(v, 0, max)
+    end
+    local along = nav.along or 0
+    local from, to = along - metres(behind, 10, 100), along + metres(ahead, 150, 400)
+    -- the last point at or before `from` (the first one when the route starts after it)
+    local first, hi = 1, n
+    while first < hi do
+        local mid = (first + hi + 1) // 2
+        if cum[mid] <= from then first = mid else hi = mid - 1 end
+    end
+    local pts, dist = {}, {}
+    for k = first, n do
+        if #dist >= ROUTE_WINDOW_POINTS then break end
+        pts[#pts + 1], pts[#pts + 2], pts[#pts + 3] = P[k * 3 - 2], P[k * 3 - 1], P[k * 3]
+        dist[#dist + 1] = cum[k]
+        if cum[k] >= to then break end   -- the first point past the window closes it
+    end
+    local man = {}
+    for _, m in ipairs(route.maneuvers or {}) do
+        if #man >= ROUTE_WINDOW_MANEUVERS then break end
+        if type(m.at) == "number" and m.at >= from and m.at <= to then man[#man + 1] = { kind = m.kind, at = m.at } end
+    end
+    return { id = route.id, along = along, length = route.length, points = pts, cumulative = dist, maneuvers = man }
+end
+
 -- ---------------------------------------------------------------------------
 -- areas: drawn by the scene's overlay; labels anchored on the open map
 

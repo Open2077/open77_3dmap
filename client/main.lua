@@ -855,6 +855,11 @@ exports("setWaypoint", function(pos) return setWaypoint(pos, "export") end)
 exports("clearWaypoint", function() return setWaypoint(nil, "export") end)
 exports("getWaypoint", function() return waypoint end)
 exports("getRoute", function() return route end)
+-- The route around the player (client/native/app.lua, N.routePath): a window of it, see the README.
+exports("getRoutePath", function(ahead, behind)
+    if type(Map3DNative) ~= "table" or type(Map3DNative.routePath) ~= "function" then return nil end
+    return Map3DNative.routePath(ahead, behind)
+end)
 
 exports("setConfig", function(patch)
     if type(patch) ~= "table" then return false end

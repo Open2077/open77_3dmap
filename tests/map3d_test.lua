@@ -273,6 +273,18 @@ Open77.blips.setWaypoint = realSet
 pageHandlers["map3d:routeInfo"]({ active = true, remaining = 999 })
 miniHandlers["map3d:routeInfo"]({ active = true, remaining = 120 })
 assert(exported.getRoute().remaining == 120, "route events come from the minimap's surface only")
+-- getRoutePath hands the window sizes to the native module and returns what it answers (tests/routepath_test.lua
+-- covers the window itself); without the module, or without a route, it is nil
+do
+  local routePath = Map3DNative.routePath
+  assert(exported.getRoutePath(100, 5) == nil, "no native module answering: nil")
+  local asked, answer = nil, nil
+  Map3DNative.routePath = function(ahead, behind) asked = { ahead, behind }; return answer end
+  assert(exported.getRoutePath(200, 20) == nil and asked[1] == 200 and asked[2] == 20, "no route: nil, sizes passed on")
+  answer = { id = 3, points = {}, cumulative = {}, maneuvers = {} }
+  assert(exported.getRoutePath() == answer and asked[1] == nil and asked[2] == nil, "the window is returned as is, defaults left to the module")
+  Map3DNative.routePath = routePath
+end
 -- open / close
 local fakeNow = 0
 _G.GetGameTimer = function() return fakeNow end

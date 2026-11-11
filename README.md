@@ -134,6 +134,7 @@ map:setWaypoint({ x = -747.8, y = 914.6, z = 30 })   -- starts the GPS
 map:clearWaypoint()
 map:getWaypoint()              -- { x, y, z } or nil
 map:getRoute()                 -- { active, remaining, next = { kind, distance }, ... }
+map:getRoutePath(150, 10)      -- the route around the player, see "Route path"
 
 map:open({ x = -2044, y = -2406 })   -- optional focus point
 map:close(); map:toggle(); map:isOpen(); map:isReady()
@@ -148,6 +149,33 @@ map:setQuality("performance")  -- see "Display quality"
 ```
 
 Blips belong to the resource that created them and disappear when it stops.
+
+### Route path
+
+`getRoute` is a summary. A resource that draws the route itself (chevrons on the road in the
+world, a turn indicator) asks for its geometry with `getRoutePath(ahead, behind)`:
+
+```lua
+local path = map:getRoutePath(150, 10)   -- ahead: metres on (default 150, 0..400), behind: metres back (default 10, 0..100)
+-- nil without a route, else
+-- {
+--   id = 4,                  -- the route's number; a new one after a reroute
+--   along = 1280.5,          -- metres travelled on the route
+--   length = 5230,           -- the route's whole length in metres
+--   points = { x, y, z, x, y, z, ... },   -- game coordinates, three numbers per point
+--   cumulative = { 1270, 1273.4, ... },   -- metres from the start at each point
+--   maneuvers = { { kind = "left", at = 1301 }, ... },   -- inside the window, at most 8
+-- }
+```
+
+`points` holds `#cumulative * 3` numbers. The first point is the last one at or before
+`along - behind`, the last is the first one at or past `along + ahead`, so the window always
+covers the asked stretch (up to 600 points; a route that is dense with points ends the window
+sooner). It is a window and not the whole route because a value returned by an export is
+copied across the resource boundary and refused above 4,096 nodes, which a route across the
+city passes (the full route is more than a thousand points of three numbers each). The
+window is at most about 2,400 nodes. Call it again as the player moves; `id` and `along` tell
+whether it is the same route and how far you are on it. The table is yours to change.
 
 ### Display quality
 
@@ -347,6 +375,7 @@ the former web page's WOFF2 files; Chakra Petch is built into NativeUI.
 ```
 pwsh -File tests/run-lua.ps1                        # blips, areas, owners, surfaces, waypoint mirror, server targets
 pwsh -File tests/run-lua.ps1 -Test native_test.lua  # icons (SVG to paths), theme layer, config merge
+pwsh -File tests/run-lua.ps1 -Test routepath_test.lua  # getRoutePath: the route window, its cap and bounds
 ```
 
 ## License
